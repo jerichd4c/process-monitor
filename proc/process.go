@@ -1,4 +1,7 @@
-package main
+// Package proc reads the state of processes and of the system directly from
+// the files the Linux kernel exposes in /proc. It only reads raw data;
+// everything derived from it (percentages, totals) is computed in our code.
+package proc
 
 import (
 	"fmt"
@@ -8,10 +11,10 @@ import (
 	"strings"
 )
 
-// clockTicks is how many ticks per second the kernel uses for the time
+// ClockTicks is how many ticks per second the kernel uses for the time
 // fields in /proc (USER_HZ). It is 100 on mainstream Linux; Go cannot call
 // sysconf(_SC_CLK_TCK) without cgo, so we keep it as a constant.
-const clockTicks = 100
+const ClockTicks = 100
 
 // pfKthread is the PF_KTHREAD bit of the "flags" field (field 9 of stat).
 // The kernel sets it on its own threads (kworker, ksoftirqd...).
@@ -38,9 +41,9 @@ type Process struct {
 	Cmdline string // full command with its arguments
 }
 
-// listPIDs returns the PID of every process, sorted: each entry of /proc
+// ListPIDs returns the PID of every process, sorted: each entry of /proc
 // whose name is a number is a process.
-func listPIDs() ([]int, error) {
+func ListPIDs() ([]int, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, err
@@ -57,51 +60,68 @@ func listPIDs() ([]int, error) {
 	return pids, nil
 }
 
-// readProcess gathers everything we show about one process.
-func readProcess(pid int) (Process, error) {
-	p, err := readStat(pid)
+// Read gathers everything we show about one process.
+func Read(pid int) (Process, error) {
+	data, err := readFile(pid, "stat")
+	if err != nil {
+		return Process{}, err
+	}
+	p, err := parseStat(pid, data)
 	if err != nil {
 		return Process{}, err
 	}
 
-	p.UID, p.RSSKB, err = readStatus(pid)
+	data, err = readFile(pid, "status")
 	if err != nil {
 		return Process{}, err
+	}
+	p.UID, p.RSSKB, err = parseStatus(data)
+	if err != nil {
+		return Process{}, fmt.Errorf("/proc/%d/status: %w", pid, err)
 	}
 
 	// Zombies have an empty cmdline; like top and ps, we fall back to the
 	// short name between brackets.
-	cmd, err := readCmdline(pid)
-	if err != nil || cmd == "" {
-		cmd = "[" + p.Comm + "]"
+	data, err = readFile(pid, "cmdline")
+	p.Cmdline = parseCmdline(data)
+	if err != nil || p.Cmdline == "" {
+		p.Cmdline = "[" + p.Comm + "]"
 	}
-	p.Cmdline = cmd
 	return p, nil
 }
 
-// readStat reads /proc/[pid]/stat and parses the fields we need.
-// Field numbers follow "man 5 proc".
-func readStat(pid int) (Process, error) {
-	path := fmt.Sprintf("/proc/%d/stat", pid)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Process{}, err
-	}
-	line := string(data)
+// IsKernelThread reports whether the process is a kernel thread.
+func (p Process) IsKernelThread() bool {
+	return p.Flags&pfKthread != 0
+}
 
+// MemPercent returns the share of the system RAM the process uses.
+func (p Process) MemPercent(memTotalKB uint64) float64 {
+	return float64(p.RSSKB) / float64(memTotalKB) * 100
+}
+
+// readFile returns the content of /proc/[pid]/[name] as a string.
+func readFile(pid int, name string) (string, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/%s", pid, name))
+	return string(data), err
+}
+
+// parseStat parses the line of /proc/[pid]/stat.
+// Field numbers follow "man 5 proc".
+func parseStat(pid int, line string) (Process, error) {
 	// The name (field 2) is between parentheses and may contain spaces or
 	// ")" itself, so we look for the FIRST "(" and the LAST ")".
 	openParen := strings.IndexByte(line, '(')
 	closeParen := strings.LastIndexByte(line, ')')
 	if openParen < 0 || closeParen < openParen {
-		return Process{}, fmt.Errorf("%s: malformed line", path)
+		return Process{}, fmt.Errorf("/proc/%d/stat: malformed line", pid)
 	}
 
 	// Everything after ")" is safe to split by spaces.
 	// rest[0] is field 3, so field n is rest[n-3].
 	rest := strings.Fields(line[closeParen+1:])
-	if len(rest) < 22 {
-		return Process{}, fmt.Errorf("%s: too few fields (%d)", path, len(rest)+2)
+	if len(rest) < 20 {
+		return Process{}, fmt.Errorf("/proc/%d/stat: too few fields (%d)", pid, len(rest)+2)
 	}
 	field := func(n int) string { return rest[n-3] }
 
@@ -111,7 +131,7 @@ func readStat(pid int) (Process, error) {
 	num := func(n int) int64 {
 		v, err := strconv.ParseInt(field(n), 10, 64)
 		if err != nil && parseErr == nil {
-			parseErr = fmt.Errorf("%s: field %d: %w", path, n, err)
+			parseErr = fmt.Errorf("/proc/%d/stat: field %d: %w", pid, n, err)
 		}
 		return v
 	}
@@ -135,19 +155,14 @@ func readStat(pid int) (Process, error) {
 	return p, nil
 }
 
-// readStatus reads two lines of /proc/[pid]/status:
+// parseStatus reads two lines of /proc/[pid]/status:
 //   - "Uid:" has four IDs: real, effective, saved and filesystem; like top,
 //     we keep the effective one.
 //   - "VmRSS:" is the resident memory in kB. Zombies and kernel threads
 //     have no memory, so the line is missing and rssKB stays 0.
-func readStatus(pid int) (uid int, rssKB uint64, err error) {
-	path := fmt.Sprintf("/proc/%d/status", pid)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, 0, err
-	}
+func parseStatus(data string) (uid int, rssKB uint64, err error) {
 	uid = -1
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(data, "\n") {
 		fields := strings.Fields(line) // e.g. ["VmRSS:", "7876", "kB"]
 		if len(fields) < 3 {
 			continue
@@ -159,40 +174,18 @@ func readStatus(pid int) (uid int, rssKB uint64, err error) {
 			rssKB, err = strconv.ParseUint(fields[1], 10, 64)
 		}
 		if err != nil {
-			return 0, 0, fmt.Errorf("%s: %s %w", path, fields[0], err)
+			return 0, 0, fmt.Errorf("%s %w", fields[0], err)
 		}
 	}
 	if uid < 0 {
-		return 0, 0, fmt.Errorf("%s: no Uid line", path)
+		return 0, 0, fmt.Errorf("no Uid line")
 	}
 	return uid, rssKB, nil
 }
 
-// readCmdline returns the full command line. In the file the arguments are
-// separated by NUL bytes ("\x00"), so we turn them into spaces.
-func readCmdline(pid int) (string, error) {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil {
-		return "", err
-	}
-	cmd := strings.TrimRight(string(data), "\x00")
-	return strings.ReplaceAll(cmd, "\x00", " "), nil
-}
-
-// IsKernelThread reports whether the process is a kernel thread.
-func (p Process) IsKernelThread() bool {
-	return p.Flags&pfKthread != 0
-}
-
-// MemPercent returns the share of the system RAM the process uses.
-func (p Process) MemPercent(memTotalKB uint64) float64 {
-	return float64(p.RSSKB) / float64(memTotalKB) * 100
-}
-
-// formatCPUTime turns ticks into "minutes:seconds.hundredths", like top.
-func formatCPUTime(ticks uint64) string {
-	hundredths := ticks * 100 / clockTicks
-	minutes := hundredths / 6000
-	seconds := hundredths / 100 % 60
-	return fmt.Sprintf("%d:%02d.%02d", minutes, seconds, hundredths%100)
+// parseCmdline turns the content of /proc/[pid]/cmdline into a readable
+// command. In the file the arguments are separated by NUL bytes ("\x00").
+func parseCmdline(data string) string {
+	cmd := strings.TrimRight(data, "\x00")
+	return strings.ReplaceAll(cmd, "\x00", " ")
 }
