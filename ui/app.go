@@ -26,9 +26,21 @@ type App struct {
 	screen   tcell.Screen
 	sampler  monitor.Sampler
 	users    proc.Users
-	snap     monitor.Snapshot // what is on screen
+	snap     monitor.Snapshot // last reading of the system
 	interval time.Duration    // time between refreshes
 	status   string           // message for the bottom line
+
+	// What the table shows: snap.Rows after filtering and sorting.
+	rows    []monitor.Row
+	sortBy  monitor.SortKey
+	filter  string // text the process name must contain
+	editing bool   // true while the user is typing the filter
+
+	// The selection follows a process (by PID), not a position, so it does
+	// not jump to another process when the table is reordered.
+	selectedPID int
+	cursor      int // index in rows of the selected process
+	top         int // index in rows of the first line on screen
 }
 
 // Run starts the interface and returns when the user quits.
@@ -111,6 +123,7 @@ func (a *App) refresh() {
 	}
 	a.snap = snap
 	a.status = ""
+	a.updateView()
 }
 
 // handleEvent reacts to one event and reports whether the user asked to
@@ -121,18 +134,77 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 		// The window changed size: repaint everything with the new size.
 		a.screen.Sync()
 	case *tcell.EventKey:
-		switch {
-		case ev.Key() == tcell.KeyCtrlC, ev.Key() == tcell.KeyEscape:
+		if ev.Key() == tcell.KeyCtrlC {
 			return true
-		case ev.Rune() == 'q', ev.Rune() == 'Q':
+		}
+		if a.editing {
+			a.handleFilterKey(ev)
+			return false
+		}
+		return a.handleKey(ev, ticker)
+	}
+	return false
+}
+
+// handleKey handles a key in the normal mode, where each key is a command.
+func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		if a.filter == "" {
 			return true
-		case ev.Rune() == '+':
+		}
+		a.filter = "" // the first Esc only removes the filter
+		a.updateView()
+	case tcell.KeyUp:
+		a.moveCursor(-1)
+	case tcell.KeyDown:
+		a.moveCursor(1)
+	case tcell.KeyPgUp:
+		a.moveCursor(-a.tableHeight())
+	case tcell.KeyPgDn:
+		a.moveCursor(a.tableHeight())
+	case tcell.KeyHome:
+		a.moveCursor(-len(a.rows))
+	case tcell.KeyEnd:
+		a.moveCursor(len(a.rows))
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case 'q', 'Q':
+			return true
+		case '+':
 			a.setInterval(a.interval+intervalStep, ticker)
-		case ev.Rune() == '-':
+		case '-':
 			a.setInterval(a.interval-intervalStep, ticker)
+		case 'c':
+			a.setSort(monitor.SortByCPU)
+		case 'm':
+			a.setSort(monitor.SortByMem)
+		case 'p':
+			a.setSort(monitor.SortByPID)
+		case '/':
+			a.editing = true
 		}
 	}
 	return false
+}
+
+// handleFilterKey handles a key while the user types the filter: letters
+// are text, not commands. The table is filtered as the text changes.
+func (a *App) handleFilterKey(ev *tcell.EventKey) {
+	switch ev.Key() {
+	case tcell.KeyEnter:
+		a.editing = false // keep the filter
+	case tcell.KeyEscape:
+		a.editing = false
+		a.filter = ""
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if runes := []rune(a.filter); len(runes) > 0 {
+			a.filter = string(runes[:len(runes)-1])
+		}
+	case tcell.KeyRune:
+		a.filter += string(ev.Rune())
+	}
+	a.updateView()
 }
 
 // setInterval changes the refresh interval, keeping it inside the limits.
@@ -140,4 +212,10 @@ func (a *App) setInterval(d time.Duration, ticker *time.Ticker) {
 	d = min(max(d, minInterval), maxInterval)
 	a.interval = d
 	ticker.Reset(d)
+}
+
+// setSort changes the column that orders the table.
+func (a *App) setSort(key monitor.SortKey) {
+	a.sortBy = key
+	a.updateView()
 }

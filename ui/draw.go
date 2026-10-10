@@ -40,30 +40,64 @@ func (a *App) draw() {
 		formatKB(sum.Mem.Total), formatKB(sum.Mem.Used()), formatKB(sum.Mem.Available)))
 
 	a.drawLine(headerLine, styleBar, fmt.Sprintf(
-		"%7s %7s %-8s %s %5s %5s %7s %3s %3s %9s  %s",
-		"PID", "PPID", "USER", "S", "%CPU", "%MEM", "RES", "THR", "NI", "TIME", "COMMAND"))
+		"%7s %7s %-8s %s %5s %5s %7s %3s %3s %3s %9s  %s",
+		"PID", "PPID", "USER", "S", "%CPU", "%MEM", "RES", "THR", "PR", "NI", "TIME", "COMMAND"))
 
-	// The table uses the lines between the header and the help line; with
-	// a small window we simply show fewer processes.
+	// The table uses the lines between the header and the help line. If
+	// there are more processes than lines, it shows a window of them that
+	// starts at a.top and always contains the selected one.
+	a.scrollToCursor()
 	helpLine := height - 1
-	for i, r := range a.snap.Rows {
-		y := firstRowLine + i
+	for i := a.top; i < len(a.rows); i++ {
+		y := firstRowLine + i - a.top
 		if y >= helpLine {
 			break
 		}
-		a.drawLine(y, styleNormal, fmt.Sprintf(
-			"%7d %7d %-8.8s %s %5.1f %5.1f %7s %3d %3d %9s  %s",
+		r := a.rows[i]
+		a.drawLine(y, rowStyle(r.State, i == a.cursor), fmt.Sprintf(
+			"%7d %7d %-8.8s %s %5.1f %5.1f %7s %3d %3d %3d %9s  %s",
 			r.PID, r.PPID, a.users.Name(r.UID), r.State, r.CPUPercent, r.MemPercent,
-			formatKB(r.RSSKB), r.NumThreads, r.Nice, formatCPUTime(r.UTime+r.STime), r.Cmdline))
+			formatKB(r.RSSKB), r.NumThreads, r.Priority, r.Nice,
+			formatCPUTime(r.UTime+r.STime), r.Cmdline))
+	}
+	if len(a.rows) == 0 && a.filter != "" {
+		a.drawLine(firstRowLine, styleNormal, "  no process matches the filter")
 	}
 
-	help := fmt.Sprintf(" q: quit   +/-: refresh interval (%.1fs)", a.interval.Seconds())
-	if a.status != "" {
-		help = " " + a.status
-	}
-	a.drawLine(helpLine, styleBar, help)
-
+	a.drawLine(helpLine, styleBar, a.helpText())
 	a.screen.Show()
+}
+
+// helpText is the content of the bottom line: an error if there is one,
+// the filter being typed, or the list of keys.
+func (a *App) helpText() string {
+	switch {
+	case a.status != "":
+		return " " + a.status
+	case a.editing:
+		return fmt.Sprintf(" Filter: %s_   (Enter: keep, Esc: clear)", a.filter)
+	}
+	help := fmt.Sprintf(" Arrows: move  c/m/p: sort [%v]  /: filter", a.sortBy)
+	if a.filter != "" {
+		help += fmt.Sprintf(" [%s]", a.filter)
+	}
+	return help + fmt.Sprintf("  +/-: interval [%.1fs]  q: quit", a.interval.Seconds())
+}
+
+// rowStyle chooses the colours of a table line. Zombies (finished but not
+// collected by their parent) and processes blocked waiting for I/O stand
+// out; the selected line is shown in reverse video.
+func rowStyle(state string, selected bool) tcell.Style {
+	style := styleNormal
+	switch state {
+	case "Z":
+		style = style.Foreground(tcell.ColorRed).Bold(true)
+	case "D":
+		style = style.Foreground(tcell.ColorYellow).Bold(true)
+	case "T", "t":
+		style = style.Foreground(tcell.ColorTeal)
+	}
+	return style.Reverse(selected)
 }
 
 // drawLine writes text on line y using the full width of the screen: longer
