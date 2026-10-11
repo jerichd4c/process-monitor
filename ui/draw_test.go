@@ -83,7 +83,7 @@ func TestDrawLayout(t *testing.T) {
 	if !strings.Contains(lines[headerLine], "PID") || !strings.Contains(lines[headerLine], "COMMAND") {
 		t.Errorf("header line = %q", lines[headerLine])
 	}
-	if !strings.Contains(lines[23], "q: quit") {
+	if !strings.Contains(lines[23], "q:quit") {
 		t.Errorf("last line = %q, want the help", lines[23])
 	}
 	// 24 lines - 3 summary - 1 header - 1 help = 19 processes fit.
@@ -152,8 +152,8 @@ func TestFilterTyping(t *testing.T) {
 	app, screen := newTestApp(t, 100, 24)
 
 	typeText(app, "/proc-4") // proc-4 and proc-40 .. proc-49
-	if !app.editing || len(app.rows) != 11 {
-		t.Fatalf("editing = %v, rows = %d; want true, 11", app.editing, len(app.rows))
+	if app.mode != modeFilter || len(app.rows) != 11 {
+		t.Fatalf("mode = %v, rows = %d; want filter mode, 11", app.mode, len(app.rows))
 	}
 	// While typing, "q" is text and must not quit the program.
 	typeText(app, "q")
@@ -166,8 +166,8 @@ func TestFilterTyping(t *testing.T) {
 	}
 
 	press(app, tcell.KeyBackspace2, tcell.KeyEnter)
-	if app.editing || app.filter != "proc-4" || len(app.rows) != 11 {
-		t.Errorf("after Enter: editing %v, filter %q, rows %d", app.editing, app.filter, len(app.rows))
+	if app.mode != modeNormal || app.filter != "proc-4" || len(app.rows) != 11 {
+		t.Errorf("after Enter: mode %v, filter %q, rows %d", app.mode, app.filter, len(app.rows))
 	}
 
 	// The first Esc removes the filter instead of quitting.
@@ -176,6 +176,26 @@ func TestFilterTyping(t *testing.T) {
 	quit := app.handleEvent(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone), ticker)
 	if quit || app.filter != "" || len(app.rows) != 50 {
 		t.Errorf("after Esc: quit %v, filter %q, rows %d", quit, app.filter, len(app.rows))
+	}
+}
+
+func TestFilterSelectsFirstMatch(t *testing.T) {
+	app, _ := newTestApp(t, 100, 24)
+	press(app, tcell.KeyDown, tcell.KeyDown, tcell.KeyDown) // PID 4
+
+	// PID 4 does not match "proc-3": the selection goes to the first row
+	// that does, not to whatever ends up on the fourth line.
+	typeText(app, "/proc-3")
+	if app.selectedPID != 3 || app.cursor != 0 {
+		t.Errorf("selected PID %d at line %d, want PID 3 at line 0", app.selectedPID, app.cursor)
+	}
+
+	// A process that still matches stays selected while the filter changes.
+	press(app, tcell.KeyEnter, tcell.KeyDown, tcell.KeyDown) // PID 31
+	typeText(app, "/")
+	press(app, tcell.KeyBackspace2) // filter is now "proc-"
+	if app.selectedPID != 31 {
+		t.Errorf("selected PID = %d, want 31", app.selectedPID)
 	}
 }
 

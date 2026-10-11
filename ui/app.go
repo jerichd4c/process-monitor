@@ -9,6 +9,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
+	"process-monitor/control"
 	"process-monitor/monitor"
 	"process-monitor/proc"
 )
@@ -20,6 +21,15 @@ const (
 	intervalStep = 500 * time.Millisecond
 )
 
+// mode says how the keyboard is interpreted.
+type mode int
+
+const (
+	modeNormal  mode = iota // each key is a command
+	modeFilter              // the user is typing the filter
+	modeConfirm             // the user is answering "are you sure?"
+)
+
 // App holds the state of the interface. Only the main loop touches it, so
 // it needs no locks.
 type App struct {
@@ -28,19 +38,29 @@ type App struct {
 	users    proc.Users
 	snap     monitor.Snapshot // last reading of the system
 	interval time.Duration    // time between refreshes
-	status   string           // message for the bottom line
+	mode     mode
+
+	// Bottom line: the result of the last action (until the next key) or a
+	// problem reading /proc.
+	message      string
+	messageIsErr bool
+	readError    string
 
 	// What the table shows: snap.Rows after filtering and sorting.
-	rows    []monitor.Row
-	sortBy  monitor.SortKey
-	filter  string // text the process name must contain
-	editing bool   // true while the user is typing the filter
+	rows   []monitor.Row
+	sortBy monitor.SortKey
+	filter string // text the process name must contain
 
 	// The selection follows a process (by PID), not a position, so it does
 	// not jump to another process when the table is reordered.
 	selectedPID int
 	cursor      int // index in rows of the selected process
 	top         int // index in rows of the first line on screen
+
+	// Action waiting for the user's confirmation, see actions.go.
+	pending pendingAction
+	apply   func(proc.Process, control.Action) error // control.Apply, replaced in tests
+	soon    <-chan time.Time                         // extra refresh shortly after an action
 }
 
 // Run starts the interface and returns when the user quits.
@@ -56,6 +76,7 @@ func Run() error {
 		screen:   screen,
 		users:    proc.LoadUsers(),
 		interval: time.Second,
+		apply:    control.Apply,
 	}
 	app.loop()
 	return nil
@@ -107,6 +128,11 @@ func (a *App) loop() {
 			}
 		case <-ticker.C:
 			a.refresh()
+		case <-a.soon:
+			// An action was just applied: show its effect without waiting
+			// for the next tick. (A nil channel never fires.)
+			a.soon = nil
+			a.refresh()
 		case <-signals:
 			return
 		}
@@ -118,11 +144,11 @@ func (a *App) loop() {
 func (a *App) refresh() {
 	snap, err := a.sampler.Sample()
 	if err != nil {
-		a.status = "cannot read /proc: " + err.Error()
+		a.readError = "cannot read /proc: " + err.Error()
 		return
 	}
 	a.snap = snap
-	a.status = ""
+	a.readError = ""
 	a.updateView()
 }
 
@@ -137,11 +163,15 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 		if ev.Key() == tcell.KeyCtrlC {
 			return true
 		}
-		if a.editing {
+		a.message = "" // the last result stays until the next key
+		switch a.mode {
+		case modeFilter:
 			a.handleFilterKey(ev)
-			return false
+		case modeConfirm:
+			a.handleConfirmKey(ev)
+		default:
+			return a.handleKey(ev, ticker)
 		}
-		return a.handleKey(ev, ticker)
 	}
 	return false
 }
@@ -182,7 +212,15 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 		case 'p':
 			a.setSort(monitor.SortByPID)
 		case '/':
-			a.editing = true
+			a.mode = modeFilter
+		case 'k':
+			a.startAction(control.Terminate)
+		case 'K':
+			a.startAction(control.Kill)
+		case 's':
+			a.startAction(control.Suspend)
+		case 'r':
+			a.startAction(control.Resume)
 		}
 	}
 	return false
@@ -193,17 +231,18 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 func (a *App) handleFilterKey(ev *tcell.EventKey) {
 	switch ev.Key() {
 	case tcell.KeyEnter:
-		a.editing = false // keep the filter
+		a.mode = modeNormal // keep the filter
 	case tcell.KeyEscape:
-		a.editing = false
+		a.mode = modeNormal
 		a.filter = ""
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		if runes := []rune(a.filter); len(runes) > 0 {
-			a.filter = string(runes[:len(runes)-1])
-		}
+		a.filter = dropLastRune(a.filter)
 	case tcell.KeyRune:
 		a.filter += string(ev.Rune())
 	}
+	// If the new filter hides the selected process, select the first match
+	// (updateView moves the cursor back if the process is still visible).
+	a.cursor = 0
 	a.updateView()
 }
 
@@ -218,4 +257,13 @@ func (a *App) setInterval(d time.Duration, ticker *time.Ticker) {
 func (a *App) setSort(key monitor.SortKey) {
 	a.sortBy = key
 	a.updateView()
+}
+
+// dropLastRune removes the last character of s, if it has one.
+func dropLastRune(s string) string {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return s
+	}
+	return string(runes[:len(runes)-1])
 }

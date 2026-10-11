@@ -19,6 +19,11 @@ const (
 var (
 	styleNormal = tcell.StyleDefault
 	styleBar    = tcell.StyleDefault.Reverse(true) // column titles and help
+
+	// Bottom line when it carries a message instead of the help.
+	styleOK    = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorBlack)
+	styleError = tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorWhite).Bold(true)
+	styleWarn  = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
 )
 
 // draw repaints the whole screen. tcell keeps the frame in memory and, on
@@ -64,24 +69,33 @@ func (a *App) draw() {
 		a.drawLine(firstRowLine, styleNormal, "  no process matches the filter")
 	}
 
-	a.drawLine(helpLine, styleBar, a.helpText())
+	text, style := a.bottomLine()
+	a.drawLine(helpLine, style, text)
 	a.screen.Show()
 }
 
-// helpText is the content of the bottom line: an error if there is one,
-// the filter being typed, or the list of keys.
-func (a *App) helpText() string {
+// bottomLine decides what the last line shows, in order of importance: a
+// question waiting for an answer, the filter being typed, the result of the
+// last action, a problem reading /proc, or the list of keys.
+func (a *App) bottomLine() (string, tcell.Style) {
 	switch {
-	case a.status != "":
-		return " " + a.status
-	case a.editing:
-		return fmt.Sprintf(" Filter: %s_   (Enter: keep, Esc: clear)", a.filter)
+	case a.mode == modeConfirm:
+		return a.confirmText(), styleWarn
+	case a.mode == modeFilter:
+		return fmt.Sprintf(" Filter: %s_   (Enter: keep, Esc: clear)", a.filter), styleBar
+	case a.message != "" && a.messageIsErr:
+		return " " + a.message, styleError
+	case a.message != "":
+		return " " + a.message, styleOK
+	case a.readError != "":
+		return " " + a.readError, styleError
 	}
-	help := fmt.Sprintf(" Arrows: move  c/m/p: sort [%v]  /: filter", a.sortBy)
+	help := fmt.Sprintf(" c/m/p:sort[%v]  /:filter", a.sortBy)
 	if a.filter != "" {
-		help += fmt.Sprintf(" [%s]", a.filter)
+		help += "[" + a.filter + "]"
 	}
-	return help + fmt.Sprintf("  +/-: interval [%.1fs]  q: quit", a.interval.Seconds())
+	help += fmt.Sprintf("  k:term K:kill s:stop r:cont  +/-:[%.1fs]  q:quit", a.interval.Seconds())
+	return help, styleBar
 }
 
 // rowStyle chooses the colours of a table line. Zombies (finished but not
