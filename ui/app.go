@@ -31,6 +31,7 @@ const (
 	modeNice                // the user is typing a new nice value
 	modeThreads             // the thread view of one process is on screen
 	modeHistory             // the CPU history of one process is on screen
+	modeHelp                // the help screen is on screen
 )
 
 // App holds the state of the interface. Only the main loop touches it, so
@@ -62,6 +63,8 @@ type App struct {
 	top         int // index in rows of the first line on screen
 
 	threads threadView // thread view, see threads.go
+
+	helpTop int // first line of the help on screen, see help.go
 
 	// CPU history view, see history.go.
 	historyOf proc.Process                 // whose history is shown
@@ -188,6 +191,8 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 			a.handleFilterKey(ev)
 		case modeNice:
 			a.handleNiceKey(ev)
+		case modeHelp:
+			a.handleHelpKey(ev)
 		case modeHistory:
 			return a.handleHistoryKey(ev, ticker)
 		case modeThreads:
@@ -249,6 +254,8 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 			a.startAction(control.Suspend)
 		case 'r':
 			a.startAction(control.Resume)
+		case '?':
+			a.openHelp()
 		case 'g':
 			a.openHistory()
 		case 'h':

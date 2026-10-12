@@ -50,6 +50,8 @@ func (a *App) draw() {
 	switch a.mode {
 	case modeThreads:
 		a.drawThreads(helpLine)
+	case modeHelp:
+		a.drawHelp(helpLine)
 	case modeHistory:
 		a.drawHistory(helpLine)
 	default:
@@ -108,17 +110,21 @@ func (a *App) bottomLine() (string, tcell.Style) {
 		return a.threadsHelp(), styleBar
 	case a.mode == modeHistory:
 		return a.historyHelp(), styleBar
+	case a.mode == modeHelp:
+		return " Help   Arrows:scroll   any other key:back", styleBar
 	}
+
+	// Normal mode: the two keys everybody needs and the current settings.
+	// The full list of keys is in the help screen.
 	order := a.sortBy.String()
 	if a.tree {
 		order = "tree"
 	}
-	help := fmt.Sprintf(" q:quit c/m/p:sort[%s] t:tree /:filter", order)
+	status := fmt.Sprintf(" ?:help  q:quit   sort[%s]  refresh[%.1fs]", order, a.interval.Seconds())
 	if a.filter != "" {
-		help += "[" + a.filter + "]"
+		status += "  filter[" + a.filter + "]"
 	}
-	help += fmt.Sprintf(" h:threads g:graph k:term K:kill s:stop r:cont n:nice +/-:[%.1fs]", a.interval.Seconds())
-	return help, styleBar
+	return status, styleBar
 }
 
 // rowStyle chooses the colours of a table line. Zombies (finished but not
