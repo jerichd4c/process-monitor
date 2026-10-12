@@ -28,6 +28,7 @@ const (
 	modeNormal  mode = iota // each key is a command
 	modeFilter              // the user is typing the filter
 	modeConfirm             // the user is answering "are you sure?"
+	modeNice                // the user is typing a new nice value
 )
 
 // App holds the state of the interface. Only the main loop touches it, so
@@ -60,6 +61,7 @@ type App struct {
 	// Action waiting for the user's confirmation, see actions.go.
 	pending pendingAction
 	apply   func(proc.Process, control.Action) error // control.Apply, replaced in tests
+	setNice func(proc.Process, int) error            // control.SetNice, replaced in tests
 	soon    <-chan time.Time                         // extra refresh shortly after an action
 }
 
@@ -77,6 +79,7 @@ func Run() error {
 		users:    proc.LoadUsers(),
 		interval: time.Second,
 		apply:    control.Apply,
+		setNice:  control.SetNice,
 	}
 	app.loop()
 	return nil
@@ -167,6 +170,8 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 		switch a.mode {
 		case modeFilter:
 			a.handleFilterKey(ev)
+		case modeNice:
+			a.handleNiceKey(ev)
 		case modeConfirm:
 			a.handleConfirmKey(ev)
 		default:
@@ -221,6 +226,8 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 			a.startAction(control.Suspend)
 		case 'r':
 			a.startAction(control.Resume)
+		case 'n':
+			a.startNice()
 		}
 	}
 	return false

@@ -44,20 +44,32 @@ type Process struct {
 // ListPIDs returns the PID of every process, sorted: each entry of /proc
 // whose name is a number is a process.
 func ListPIDs() ([]int, error) {
-	entries, err := os.ReadDir("/proc")
+	return numericEntries("/proc")
+}
+
+// ListThreadIDs returns the IDs of the threads of a process, sorted: the
+// entries of /proc/[pid]/task. The main thread has the same ID as the
+// process.
+func ListThreadIDs(pid int) ([]int, error) {
+	return numericEntries(fmt.Sprintf("/proc/%d/task", pid))
+}
+
+// numericEntries returns, sorted, the entries of dir whose name is a number.
+func numericEntries(dir string) ([]int, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	var pids []int
+	var ids []int
 	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
+		id, err := strconv.Atoi(e.Name())
 		if err != nil {
 			continue // not a process: "meminfo", "self", "sys"...
 		}
-		pids = append(pids, pid)
+		ids = append(ids, id)
 	}
-	sort.Ints(pids)
-	return pids, nil
+	sort.Ints(ids)
+	return ids, nil
 }
 
 // Read gathers everything we show about one process.

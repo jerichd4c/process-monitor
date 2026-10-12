@@ -81,6 +81,8 @@ func (a *App) bottomLine() (string, tcell.Style) {
 	switch {
 	case a.mode == modeConfirm:
 		return a.confirmText(), styleWarn
+	case a.mode == modeNice:
+		return a.niceText(), styleWarn
 	case a.mode == modeFilter:
 		return fmt.Sprintf(" Filter: %s_   (Enter: keep, Esc: clear)", a.filter), styleBar
 	case a.message != "" && a.messageIsErr:
@@ -90,11 +92,11 @@ func (a *App) bottomLine() (string, tcell.Style) {
 	case a.readError != "":
 		return " " + a.readError, styleError
 	}
-	help := fmt.Sprintf(" c/m/p:sort[%v]  /:filter", a.sortBy)
+	help := fmt.Sprintf(" q:quit  c/m/p:sort[%v]  /:filter", a.sortBy)
 	if a.filter != "" {
 		help += "[" + a.filter + "]"
 	}
-	help += fmt.Sprintf("  k:term K:kill s:stop r:cont  +/-:[%.1fs]  q:quit", a.interval.Seconds())
+	help += fmt.Sprintf("  k:term K:kill s:stop r:cont n:nice  +/-:[%.1fs]", a.interval.Seconds())
 	return help, styleBar
 }
 

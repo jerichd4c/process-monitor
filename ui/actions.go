@@ -19,7 +19,7 @@ const forceWord = "yes"
 type pendingAction struct {
 	action control.Action
 	target proc.Process // the process as it was when the key was pressed
-	typed  string       // what the user has typed so far (force kill only)
+	typed  string       // what the user has typed so far (force kill, nice)
 }
 
 // startAction begins an action on the selected process. Suspend and resume

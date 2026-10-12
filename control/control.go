@@ -71,23 +71,15 @@ var (
 
 // Apply sends the signal of the action to the target process.
 func Apply(target proc.Process, action Action) error {
-	// kill(0) and kill(-1) mean "a whole group of processes": never allow
-	// them, whatever the caller passes.
-	if target.PID <= 0 {
-		return ErrGone
-	}
 	// Killing or stopping ourselves would leave the terminal unusable.
 	if target.PID == os.Getpid() {
 		return ErrSelf
 	}
-	// The PID may have been reused by a new process since the user chose
-	// it. The start time tells us whether it is still the same one.
-	current, err := proc.Read(target.PID)
-	if err != nil || current.StartTime != target.StartTime {
-		return ErrGone
+	if err := checkTarget(target); err != nil {
+		return err
 	}
 
-	err = syscall.Kill(target.PID, action.Signal())
+	err := syscall.Kill(target.PID, action.Signal())
 	switch {
 	case errors.Is(err, syscall.ESRCH):
 		return ErrGone
@@ -95,4 +87,21 @@ func Apply(target proc.Process, action Action) error {
 		return ErrDenied
 	}
 	return err
+}
+
+// checkTarget makes sure target is still the process the user chose.
+func checkTarget(target proc.Process) error {
+	// PID 0 and negative PIDs do not name a process but whole groups of
+	// them (kill(-1) means "every process I can reach"): never allow them,
+	// whatever the caller passes.
+	if target.PID <= 0 {
+		return ErrGone
+	}
+	// The PID may have been reused by a new process since the user chose
+	// it. The start time tells us whether it is still the same one.
+	current, err := proc.Read(target.PID)
+	if err != nil || current.StartTime != target.StartTime {
+		return ErrGone
+	}
+	return nil
 }
