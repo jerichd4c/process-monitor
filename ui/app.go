@@ -30,6 +30,7 @@ const (
 	modeConfirm             // the user is answering "are you sure?"
 	modeNice                // the user is typing a new nice value
 	modeThreads             // the thread view of one process is on screen
+	modeHistory             // the CPU history of one process is on screen
 )
 
 // App holds the state of the interface. Only the main loop touches it, so
@@ -62,6 +63,10 @@ type App struct {
 
 	threads threadView // thread view, see threads.go
 
+	// CPU history view, see history.go.
+	historyOf proc.Process                 // whose history is shown
+	history   func(proc.Process) []float64 // sampler.History, replaced in tests
+
 	// Action waiting for the user's confirmation, see actions.go.
 	pending pendingAction
 	apply   func(proc.Process, control.Action) error // control.Apply, replaced in tests
@@ -85,6 +90,7 @@ func Run() error {
 		apply:    control.Apply,
 		setNice:  control.SetNice,
 	}
+	app.history = app.sampler.History
 	app.loop()
 	return nil
 }
@@ -157,8 +163,11 @@ func (a *App) refresh() {
 	a.snap = snap
 	a.readError = ""
 	a.updateView()
-	if a.mode == modeThreads {
+	switch a.mode {
+	case modeThreads:
 		a.refreshThreads()
+	case modeHistory:
+		a.checkHistory()
 	}
 }
 
@@ -179,6 +188,8 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 			a.handleFilterKey(ev)
 		case modeNice:
 			a.handleNiceKey(ev)
+		case modeHistory:
+			return a.handleHistoryKey(ev, ticker)
 		case modeThreads:
 			return a.handleThreadsKey(ev, ticker)
 		case modeConfirm:
@@ -238,6 +249,8 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 			a.startAction(control.Suspend)
 		case 'r':
 			a.startAction(control.Resume)
+		case 'g':
+			a.openHistory()
 		case 'h':
 			a.openThreads()
 		case 'n':

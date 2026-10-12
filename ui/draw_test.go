@@ -34,6 +34,7 @@ func newTestApp(t *testing.T, width, height int) (*App, tcell.SimulationScreen) 
 		screen:   screen,
 		users:    proc.Users{0: "root"},
 		interval: time.Second,
+		history:  func(proc.Process) []float64 { return nil },
 		snap:     monitor.Snapshot{Rows: rows, Summary: monitor.Summary{Total: 50, Sleeping: 50}},
 	}
 	app.updateView()

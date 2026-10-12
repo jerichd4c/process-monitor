@@ -47,7 +47,8 @@ type procKey struct {
 // to compute %CPU.
 type Sampler struct {
 	prevCPU   proc.CPUTimes
-	prevTimes map[procKey]uint64 // utime+stime of each process, in ticks
+	prevTimes map[procKey]uint64    // utime+stime of each process, in ticks
+	history   map[procKey][]float64 // last %CPU values of each process, oldest first
 }
 
 // Sample reads the whole system once. The first call has nothing to compare
@@ -80,6 +81,7 @@ func (s *Sampler) Sample() (Snapshot, error) {
 	}
 
 	times := make(map[procKey]uint64, len(pids))
+	history := make(map[procKey][]float64, len(pids))
 	for _, pid := range pids {
 		p, err := proc.Read(pid)
 		if err != nil {
@@ -103,13 +105,21 @@ func (s *Sampler) Sample() (Snapshot, error) {
 				row.CPUPercent = percent(used-prev, deltaTotal)
 			}
 		}
+		// Every live process gets an entry, even before its first value,
+		// so that History can tell "no values yet" from "it ended".
+		values := s.history[key]
+		if !first {
+			values = appendCapped(values, row.CPUPercent, HistoryLen)
+		}
+		history[key] = values
 		snap.Rows = append(snap.Rows, row)
 		countState(&snap.Summary, p.State)
 	}
 
-	// Keep only this refresh: processes that ended disappear from the map.
+	// Keep only this refresh: processes that ended disappear from the maps.
 	s.prevCPU = cpu
 	s.prevTimes = times
+	s.history = history
 	return snap, nil
 }
 

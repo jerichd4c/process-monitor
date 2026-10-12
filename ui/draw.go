@@ -44,12 +44,15 @@ func (a *App) draw() {
 		"Mem: %s total, %s used, %s available",
 		formatKB(sum.Mem.Total), formatKB(sum.Mem.Used()), formatKB(sum.Mem.Available)))
 
-	// The middle of the screen is the process table or, in the thread
-	// view, the threads of one process.
+	// The middle of the screen is the process table or, in the other
+	// views, the threads or the CPU history of one process.
 	helpLine := height - 1
-	if a.mode == modeThreads {
+	switch a.mode {
+	case modeThreads:
 		a.drawThreads(helpLine)
-	} else {
+	case modeHistory:
+		a.drawHistory(helpLine)
+	default:
 		a.drawTable(helpLine)
 	}
 
@@ -103,6 +106,8 @@ func (a *App) bottomLine() (string, tcell.Style) {
 		return " " + a.readError, styleError
 	case a.mode == modeThreads:
 		return a.threadsHelp(), styleBar
+	case a.mode == modeHistory:
+		return a.historyHelp(), styleBar
 	}
 	order := a.sortBy.String()
 	if a.tree {
@@ -112,7 +117,7 @@ func (a *App) bottomLine() (string, tcell.Style) {
 	if a.filter != "" {
 		help += "[" + a.filter + "]"
 	}
-	help += fmt.Sprintf(" h:threads k:term K:kill s:stop r:cont n:nice +/-:[%.1fs]", a.interval.Seconds())
+	help += fmt.Sprintf(" h:threads g:graph k:term K:kill s:stop r:cont n:nice +/-:[%.1fs]", a.interval.Seconds())
 	return help, styleBar
 }
 
