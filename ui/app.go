@@ -50,6 +50,7 @@ type App struct {
 	// What the table shows: snap.Rows after filtering and sorting.
 	rows   []monitor.Row
 	sortBy monitor.SortKey
+	tree   bool   // show the parent/child hierarchy instead of sorting
 	filter string // text the process name must contain
 
 	// The selection follows a process (by PID), not a position, so it does
@@ -216,6 +217,9 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 			a.setSort(monitor.SortByMem)
 		case 'p':
 			a.setSort(monitor.SortByPID)
+		case 't':
+			a.tree = !a.tree
+			a.updateView()
 		case '/':
 			a.mode = modeFilter
 		case 'k':
@@ -263,6 +267,7 @@ func (a *App) setInterval(d time.Duration, ticker *time.Ticker) {
 // setSort changes the column that orders the table.
 func (a *App) setSort(key monitor.SortKey) {
 	a.sortBy = key
+	a.tree = false // choosing a column leaves the tree view
 	a.updateView()
 }
 

@@ -12,6 +12,7 @@ type Row struct {
 	proc.Process
 	CPUPercent float64
 	MemPercent float64
+	TreePrefix string // lines that draw the hierarchy, only in the tree view
 }
 
 // Summary is the header of the monitor.

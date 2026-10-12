@@ -63,7 +63,7 @@ func (a *App) draw() {
 			"%7d %7d %-8.8s %s %5.1f %5.1f %7s %3d %3d %3d %9s  %s",
 			r.PID, r.PPID, a.users.Name(r.UID), r.State, r.CPUPercent, r.MemPercent,
 			formatKB(r.RSSKB), r.NumThreads, r.Priority, r.Nice,
-			formatCPUTime(r.UTime+r.STime), r.Cmdline))
+			formatCPUTime(r.UTime+r.STime), r.TreePrefix+r.Cmdline))
 	}
 	if len(a.rows) == 0 && a.filter != "" {
 		a.drawLine(firstRowLine, styleNormal, "  no process matches the filter")
@@ -92,11 +92,15 @@ func (a *App) bottomLine() (string, tcell.Style) {
 	case a.readError != "":
 		return " " + a.readError, styleError
 	}
-	help := fmt.Sprintf(" q:quit  c/m/p:sort[%v]  /:filter", a.sortBy)
+	order := a.sortBy.String()
+	if a.tree {
+		order = "tree"
+	}
+	help := fmt.Sprintf(" q:quit c/m/p:sort[%s] t:tree /:filter", order)
 	if a.filter != "" {
 		help += "[" + a.filter + "]"
 	}
-	help += fmt.Sprintf("  k:term K:kill s:stop r:cont n:nice  +/-:[%.1fs]", a.interval.Seconds())
+	help += fmt.Sprintf(" k:term K:kill s:stop r:cont n:nice +/-:[%.1fs]", a.interval.Seconds())
 	return help, styleBar
 }
 

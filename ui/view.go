@@ -3,11 +3,15 @@ package ui
 import "process-monitor/monitor"
 
 // updateView rebuilds the rows of the table from the last snapshot,
-// applying the filter and the sort order, and puts the cursor back on the
-// process that was selected.
+// applying the filter and the sort order (or the tree order), and puts the
+// cursor back on the process that was selected.
 func (a *App) updateView() {
 	a.rows = monitor.Filter(a.snap.Rows, a.filter)
-	monitor.Sort(a.rows, a.sortBy)
+	if a.tree {
+		a.rows = monitor.Tree(a.rows)
+	} else {
+		monitor.Sort(a.rows, a.sortBy)
+	}
 
 	// Look for the selected process in its new position. If it is gone
 	// (it ended or the filter hides it), the cursor stays on the same line.
