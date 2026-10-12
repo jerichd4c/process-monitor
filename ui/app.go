@@ -29,6 +29,7 @@ const (
 	modeFilter              // the user is typing the filter
 	modeConfirm             // the user is answering "are you sure?"
 	modeNice                // the user is typing a new nice value
+	modeThreads             // the thread view of one process is on screen
 )
 
 // App holds the state of the interface. Only the main loop touches it, so
@@ -58,6 +59,8 @@ type App struct {
 	selectedPID int
 	cursor      int // index in rows of the selected process
 	top         int // index in rows of the first line on screen
+
+	threads threadView // thread view, see threads.go
 
 	// Action waiting for the user's confirmation, see actions.go.
 	pending pendingAction
@@ -154,6 +157,9 @@ func (a *App) refresh() {
 	a.snap = snap
 	a.readError = ""
 	a.updateView()
+	if a.mode == modeThreads {
+		a.refreshThreads()
+	}
 }
 
 // handleEvent reacts to one event and reports whether the user asked to
@@ -173,6 +179,8 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 			a.handleFilterKey(ev)
 		case modeNice:
 			a.handleNiceKey(ev)
+		case modeThreads:
+			return a.handleThreadsKey(ev, ticker)
 		case modeConfirm:
 			a.handleConfirmKey(ev)
 		default:
@@ -230,6 +238,8 @@ func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 			a.startAction(control.Suspend)
 		case 'r':
 			a.startAction(control.Resume)
+		case 'h':
+			a.openThreads()
 		case 'n':
 			a.startNice()
 		}

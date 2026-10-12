@@ -44,15 +44,29 @@ func (a *App) draw() {
 		"Mem: %s total, %s used, %s available",
 		formatKB(sum.Mem.Total), formatKB(sum.Mem.Used()), formatKB(sum.Mem.Available)))
 
+	// The middle of the screen is the process table or, in the thread
+	// view, the threads of one process.
+	helpLine := height - 1
+	if a.mode == modeThreads {
+		a.drawThreads(helpLine)
+	} else {
+		a.drawTable(helpLine)
+	}
+
+	text, style := a.bottomLine()
+	a.drawLine(helpLine, style, text)
+	a.screen.Show()
+}
+
+// drawTable paints the process table between the summary and the help line.
+func (a *App) drawTable(helpLine int) {
 	a.drawLine(headerLine, styleBar, fmt.Sprintf(
 		"%7s %7s %-8s %s %5s %5s %7s %3s %3s %3s %9s  %s",
 		"PID", "PPID", "USER", "S", "%CPU", "%MEM", "RES", "THR", "PR", "NI", "TIME", "COMMAND"))
 
-	// The table uses the lines between the header and the help line. If
-	// there are more processes than lines, it shows a window of them that
-	// starts at a.top and always contains the selected one.
+	// If there are more processes than lines, the table shows a window of
+	// them that starts at a.top and always contains the selected one.
 	a.scrollToCursor()
-	helpLine := height - 1
 	for i := a.top; i < len(a.rows); i++ {
 		y := firstRowLine + i - a.top
 		if y >= helpLine {
@@ -68,10 +82,6 @@ func (a *App) draw() {
 	if len(a.rows) == 0 && a.filter != "" {
 		a.drawLine(firstRowLine, styleNormal, "  no process matches the filter")
 	}
-
-	text, style := a.bottomLine()
-	a.drawLine(helpLine, style, text)
-	a.screen.Show()
 }
 
 // bottomLine decides what the last line shows, in order of importance: a
@@ -91,6 +101,8 @@ func (a *App) bottomLine() (string, tcell.Style) {
 		return " " + a.message, styleOK
 	case a.readError != "":
 		return " " + a.readError, styleError
+	case a.mode == modeThreads:
+		return a.threadsHelp(), styleBar
 	}
 	order := a.sortBy.String()
 	if a.tree {
@@ -100,7 +112,7 @@ func (a *App) bottomLine() (string, tcell.Style) {
 	if a.filter != "" {
 		help += "[" + a.filter + "]"
 	}
-	help += fmt.Sprintf(" k:term K:kill s:stop r:cont n:nice +/-:[%.1fs]", a.interval.Seconds())
+	help += fmt.Sprintf(" h:threads k:term K:kill s:stop r:cont n:nice +/-:[%.1fs]", a.interval.Seconds())
 	return help, styleBar
 }
 
