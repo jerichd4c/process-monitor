@@ -213,11 +213,12 @@ func (a *App) handleEvent(ev tcell.Event, ticker *time.Ticker) (quit bool) {
 func (a *App) handleKey(ev *tcell.EventKey, ticker *time.Ticker) (quit bool) {
 	switch ev.Key() {
 	case tcell.KeyEscape:
-		if a.filter == "" {
-			return true
+		// Esc always means "go back": here it removes the filter. It never
+		// quits, so pressing it once too often cannot close the monitor.
+		if a.filter != "" {
+			a.filter = ""
+			a.updateView()
 		}
-		a.filter = "" // the first Esc only removes the filter
-		a.updateView()
 	case tcell.KeyUp:
 		a.moveCursor(-1)
 	case tcell.KeyDown:

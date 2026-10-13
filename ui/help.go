@@ -31,7 +31,7 @@ func helpContent() []helpEntry {
 		plain("            n  change the priority (nice, from -20 to 19)"),
 		plain(""),
 		plain("  Refresh   +  slower     -  faster     (from 0.5 s to 10 s)"),
-		plain("  Quit      q, Esc or Ctrl+C"),
+		plain("  Quit      q or Ctrl+C     (Esc only goes back; it never quits)"),
 		plain(""),
 		plain("  Columns   S state   RES memory in RAM   THR threads   PR priority   NI nice"),
 		plain("            %CPU and %MEM: 100 is the whole machine"),

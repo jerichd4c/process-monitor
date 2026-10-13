@@ -28,7 +28,7 @@ func TestHelpScreen(t *testing.T) {
 		"k  terminate (SIGTERM)", "K  force kill (SIGKILL)",
 		"s  suspend (SIGSTOP)", "r  resume (SIGCONT)", "n  change the priority",
 		"+  slower", "-  faster",
-		"q, Esc or Ctrl+C",
+		"q or Ctrl+C", "Esc only goes back",
 		"Z zombie", "D blocked", "T stopped",
 	} {
 		if !strings.Contains(text, want) {

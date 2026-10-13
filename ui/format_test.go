@@ -3,7 +3,10 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
+
+	"github.com/gdamore/tcell/v2"
 
 	"process-monitor/monitor"
 	"process-monitor/proc"
@@ -110,5 +113,59 @@ func TestSkippedProcessesAreShown(t *testing.T) {
 	app.draw()
 	if line := screenLines(screen)[0]; !strings.Contains(line, "(3 could not be read)") {
 		t.Errorf("summary = %q, want it to say 3 processes were skipped", line)
+	}
+}
+
+func TestEscNeverQuits(t *testing.T) {
+	app, _ := newTestApp(t, 100, 24)
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	esc := func() bool {
+		return app.handleEvent(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone), ticker)
+	}
+
+	// In the table, with or without a filter, and after closing each view.
+	for i := 0; i < 3; i++ {
+		if esc() {
+			t.Fatal("Esc in the table quit the monitor")
+		}
+	}
+	for _, keys := range []string{"/abc", "?", "k", "K", "n", "t"} {
+		typeText(app, keys)
+		for i := 0; i < 3; i++ {
+			if esc() {
+				t.Fatalf("Esc after %q quit the monitor", keys)
+			}
+		}
+		if app.mode != modeNormal || app.filter != "" {
+			t.Errorf("after %q and Esc: mode %v, filter %q; want the plain table", keys, app.mode, app.filter)
+		}
+	}
+
+	// q and Ctrl+C are the ways out.
+	if !app.handleEvent(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone), ticker) {
+		t.Error("q did not quit")
+	}
+	if !app.handleEvent(tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone), ticker) {
+		t.Error("Ctrl+C did not quit")
+	}
+}
+
+func TestHistoryStatsCountAllSamples(t *testing.T) {
+	// 300 samples are kept, but only 72 fit in an 80-column window.
+	samples := make([]float64, 300)
+	samples[0] = 40 // an old peak, no longer on screen
+	app, screen := newTestApp(t, 80, 24)
+	fakeHistory(app, 1, samples)
+	typeText(app, "g")
+	app.draw()
+
+	text := strings.Join(screenLines(screen), "\n")
+	if !strings.Contains(text, "maximum 40.0%") || !strings.Contains(text, "last 300 samples") {
+		t.Errorf("the numbers are not about all the samples:\n%s", text)
+	}
+	// The scale follows what is on screen (all zeros), not the old peak.
+	if !strings.Contains(text, "   1.0%┤") {
+		t.Errorf("scale label not found:\n%s", text)
 	}
 }

@@ -82,13 +82,16 @@ func (a *App) drawHistory(helpLine int) {
 		a.drawLine(firstRowLine, styleNormal, historyStats(samples))
 		return
 	}
-	if len(samples) > plotWidth {
-		samples = samples[len(samples)-plotWidth:] // only what fits
+	// The graph shows the newest samples that fit; the numbers below it
+	// are about all the samples kept.
+	visible := samples
+	if len(visible) > plotWidth {
+		visible = visible[len(visible)-plotWidth:]
 	}
 
 	// The scale adapts to the highest value on screen.
-	scale := niceScale(slicesMax(samples))
-	for i, row := range graphRows(samples, plotWidth, plotHeight, scale) {
+	scale := niceScale(slicesMax(visible))
+	for i, row := range graphRows(visible, plotWidth, plotHeight, scale) {
 		label := strings.Repeat(" ", axisWidth-1) + "│"
 		switch i {
 		case 0:
@@ -103,7 +106,7 @@ func (a *App) drawHistory(helpLine int) {
 	a.drawLine(firstRowLine+plotHeight+1, styleNormal, historyStats(samples))
 }
 
-// historyStats summarizes the samples in one line.
+// historyStats summarizes all the samples kept for a process in one line.
 func historyStats(samples []float64) string {
 	if len(samples) == 0 {
 		return "  waiting for the first measurement..."
@@ -112,7 +115,7 @@ func historyStats(samples []float64) string {
 	for _, v := range samples {
 		sum += v
 	}
-	return fmt.Sprintf("  now %.1f%%   average %.1f%%   maximum %.1f%%   (%d of at most %d samples)",
+	return fmt.Sprintf("  now %.1f%%   average %.1f%%   maximum %.1f%%   (last %d samples; %d are kept at most)",
 		samples[len(samples)-1], sum/float64(len(samples)), slicesMax(samples),
 		len(samples), monitor.HistoryLen)
 }
