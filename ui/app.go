@@ -135,6 +135,9 @@ func (a *App) loop() {
 	defer ticker.Stop()
 
 	a.refresh()
+	// %CPU needs two readings: take the second one soon, so the first
+	// screen does not show zeros for a whole interval.
+	a.soon = time.After(300 * time.Millisecond)
 	for {
 		a.draw()
 		select {

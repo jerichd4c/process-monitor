@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/gdamore/tcell/v2"
 
@@ -34,9 +35,15 @@ func (a *App) draw() {
 	_, height := a.screen.Size()
 
 	sum := a.snap.Summary
-	a.drawLine(0, styleNormal, fmt.Sprintf(
+	tasks := fmt.Sprintf(
 		"Tasks: %d total, %d running, %d sleeping, %d stopped, %d zombie",
-		sum.Total, sum.Running, sum.Sleeping, sum.Stopped, sum.Zombie))
+		sum.Total, sum.Running, sum.Sleeping, sum.Stopped, sum.Zombie)
+	if a.snap.Skipped > 0 {
+		// Processes that ended while we were reading them, or that we are
+		// not allowed to read: they are left out, never a reason to fail.
+		tasks += fmt.Sprintf("   (%d could not be read)", a.snap.Skipped)
+	}
+	a.drawLine(0, styleNormal, tasks)
 	a.drawLine(1, styleNormal, fmt.Sprintf(
 		"CPU: %5.1f%%   Load average: %.2f %.2f %.2f",
 		sum.CPUPercent, sum.Load.One, sum.Load.Five, sum.Load.Fifteen))
@@ -66,7 +73,7 @@ func (a *App) draw() {
 // drawTable paints the process table between the summary and the help line.
 func (a *App) drawTable(helpLine int) {
 	a.drawLine(headerLine, styleBar, fmt.Sprintf(
-		"%7s %7s %-8s %s %5s %5s %7s %3s %3s %3s %9s  %s",
+		"%7s %7s %-8s %s %5s %5s %7s %4s %3s %3s %9s  %s",
 		"PID", "PPID", "USER", "S", "%CPU", "%MEM", "RES", "THR", "PR", "NI", "TIME", "COMMAND"))
 
 	// If there are more processes than lines, the table shows a window of
@@ -79,9 +86,9 @@ func (a *App) drawTable(helpLine int) {
 		}
 		r := a.rows[i]
 		a.drawLine(y, rowStyle(r.State, i == a.cursor), fmt.Sprintf(
-			"%7d %7d %-8.8s %s %5.1f %5.1f %7s %3d %3d %3d %9s  %s",
+			"%7d %7d %-8.8s %s %5.1f %5.1f %7s %4d %3s %3d %9s  %s",
 			r.PID, r.PPID, a.users.Name(r.UID), r.State, r.CPUPercent, r.MemPercent,
-			formatKB(r.RSSKB), r.NumThreads, r.Priority, r.Nice,
+			formatKB(r.RSSKB), r.NumThreads, formatPriority(r.Priority), r.Nice,
 			formatCPUTime(r.UTime+r.STime), r.TreePrefix+r.Cmdline))
 	}
 	if len(a.rows) == 0 && a.filter != "" {
@@ -150,22 +157,44 @@ func (a *App) drawLine(y int, style tcell.Style, text string) {
 	if y < 0 || y >= height {
 		return
 	}
-	runes := []rune(text)
-	for x := 0; x < width; x++ {
-		r := ' '
-		if x < len(runes) {
-			r = runes[x]
+	// Put writes one character and says how many cells it took: most take
+	// one, but some (Chinese, Japanese, emoji...) are twice as wide, and
+	// counting them as one would misplace everything after them.
+	x := 0
+	for text != "" && x < width {
+		rest, cells := a.screen.Put(x, y, text, style)
+		if cells <= 0 || len(rest) >= len(text) {
+			break // nothing was written: do not loop forever
 		}
-		a.screen.SetContent(x, y, r, nil, style)
+		text = rest
+		x += cells
+	}
+	for ; x < width; x++ {
+		a.screen.SetContent(x, y, ' ', nil, style)
 	}
 }
 
 // formatCPUTime turns ticks into "minutes:seconds.hundredths", like top.
+// A process that has used 1000 minutes or more is shown as
+// "hours:minutes:seconds" instead, so the column never grows too wide.
 func formatCPUTime(ticks uint64) string {
 	hundredths := ticks * 100 / proc.ClockTicks
 	minutes := hundredths / 6000
 	seconds := hundredths / 100 % 60
+	if minutes >= 1000 {
+		return fmt.Sprintf("%d:%02d:%02d", minutes/60, minutes%60, seconds)
+	}
 	return fmt.Sprintf("%d:%02d.%02d", minutes, seconds, hundredths%100)
+}
+
+// formatPriority shows the priority the kernel uses. Normal processes have
+// 0 to 39 (20 + nice). Real-time processes have negative values; the
+// highest real-time priority, -100, is shown as "rt", like top does.
+func formatPriority(priority int) string {
+	if priority <= -100 {
+		return "rt"
+	}
+	return strconv.Itoa(priority)
 }
 
 // formatKB shows an amount of memory given in kB with a readable unit.

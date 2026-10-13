@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ClockTicks is how many ticks per second the kernel uses for the time
@@ -150,7 +152,7 @@ func parseStat(pid int, line string) (Process, error) {
 
 	p := Process{
 		PID:        pid,
-		Comm:       line[openParen+1 : closeParen],
+		Comm:       printable(line[openParen+1 : closeParen]),
 		State:      field(3),
 		PPID:       int(num(4)),
 		Flags:      uint64(num(9)),
@@ -199,5 +201,18 @@ func parseStatus(data string) (uid int, rssKB uint64, err error) {
 // command. In the file the arguments are separated by NUL bytes ("\x00").
 func parseCmdline(data string) string {
 	cmd := strings.TrimRight(data, "\x00")
-	return strings.ReplaceAll(cmd, "\x00", " ")
+	return printable(strings.ReplaceAll(cmd, "\x00", " "))
+}
+
+// printable replaces with "?" every character that cannot be shown as is:
+// control characters (a new line, a tab, an escape sequence...) and bytes
+// that are not valid text. A process chooses its own name and arguments, so
+// they must never be trusted to be harmless when written to a terminal.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == utf8.RuneError || !unicode.IsPrint(r) {
+			return '?'
+		}
+		return r
+	}, s)
 }

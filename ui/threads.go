@@ -105,8 +105,8 @@ func (a *App) drawThreads(helpLine int) {
 			name += "  (main thread)"
 		}
 		a.drawLine(y, rowStyle(t.State, false), fmt.Sprintf(
-			"%7d %s %5.1f %3d %3d %9s  %s",
-			t.TID, t.State, t.CPUPercent, t.Priority, t.Nice,
+			"%7d %s %5.1f %3s %3d %9s  %s",
+			t.TID, t.State, t.CPUPercent, formatPriority(t.Priority), t.Nice,
 			formatCPUTime(t.UTime+t.STime), name))
 	}
 }
