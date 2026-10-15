@@ -169,3 +169,15 @@ func TestHistoryStatsCountAllSamples(t *testing.T) {
 		t.Errorf("scale label not found:\n%s", text)
 	}
 }
+
+func TestDeniedProcessesAreShown(t *testing.T) {
+	app, screen := newTestApp(t, 140, 24)
+	app.snap.Skipped = 1
+	app.snap.Denied = 2
+	app.draw()
+	line := screenLines(screen)[0]
+	if !strings.Contains(line, "(1 could not be read)") ||
+		!strings.Contains(line, "(2 hidden: no permission to read them)") {
+		t.Errorf("summary = %q, want both notes", line)
+	}
+}

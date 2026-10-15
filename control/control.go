@@ -100,6 +100,9 @@ func checkTarget(target proc.Process) error {
 	// The PID may have been reused by a new process since the user chose
 	// it. The start time tells us whether it is still the same one.
 	current, err := proc.Read(target.PID)
+	if errors.Is(err, proc.ErrNoAccess) {
+		return proc.ErrNoAccess // it exists, but we may not look at it
+	}
 	if err != nil || current.StartTime != target.StartTime {
 		return ErrGone
 	}

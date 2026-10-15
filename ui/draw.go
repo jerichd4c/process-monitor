@@ -38,10 +38,15 @@ func (a *App) draw() {
 	tasks := fmt.Sprintf(
 		"Tasks: %d total, %d running, %d sleeping, %d stopped, %d zombie",
 		sum.Total, sum.Running, sum.Sleeping, sum.Stopped, sum.Zombie)
+	// Processes left out of the table are never a reason to fail, but the
+	// user is told how many and why.
 	if a.snap.Skipped > 0 {
-		// Processes that ended while we were reading them, or that we are
-		// not allowed to read: they are left out, never a reason to fail.
+		// They ended while we were reading them.
 		tasks += fmt.Sprintf("   (%d could not be read)", a.snap.Skipped)
+	}
+	if a.snap.Denied > 0 {
+		// They exist, but the kernel does not let this user read them.
+		tasks += fmt.Sprintf("   (%d hidden: no permission to read them)", a.snap.Denied)
 	}
 	a.drawLine(0, styleNormal, tasks)
 	a.drawLine(1, styleNormal, fmt.Sprintf(

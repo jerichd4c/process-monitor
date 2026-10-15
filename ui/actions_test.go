@@ -119,7 +119,7 @@ func TestTargetIsFixedWhenTheQuestionAppears(t *testing.T) {
 }
 
 func TestActionErrorsAreReported(t *testing.T) {
-	for _, problem := range []error{control.ErrGone, control.ErrDenied, control.ErrSelf} {
+	for _, problem := range []error{control.ErrGone, control.ErrDenied, control.ErrSelf, proc.ErrNoAccess} {
 		app, screen := newTestApp(t, 100, 24)
 		fakeApply(app, problem)
 

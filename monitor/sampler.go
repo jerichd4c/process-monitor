@@ -4,6 +4,8 @@
 package monitor
 
 import (
+	"errors"
+
 	"process-monitor/proc"
 )
 
@@ -32,7 +34,8 @@ type Summary struct {
 type Snapshot struct {
 	Rows    []Row
 	Summary Summary
-	Skipped int // processes that vanished or could not be read
+	Skipped int // processes that ended while being read, or unreadable data
+	Denied  int // processes that exist but whose data we may not read
 }
 
 // procKey identifies a process across refreshes. The PID alone is not
@@ -85,7 +88,13 @@ func (s *Sampler) Sample() (Snapshot, error) {
 	for _, pid := range pids {
 		p, err := proc.Read(pid)
 		if err != nil {
-			snap.Skipped++ // it ended or we may not read it: skip it
+			// Skip it, but count why: a process that ended is normal, a
+			// process we may not read is worth telling the user about.
+			if errors.Is(err, proc.ErrNoAccess) {
+				snap.Denied++
+			} else {
+				snap.Skipped++
+			}
 			continue
 		}
 		if p.IsKernelThread() {

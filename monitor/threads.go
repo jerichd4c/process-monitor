@@ -33,7 +33,11 @@ func (s *ThreadSampler) Sample(target proc.Process) ([]ThreadRow, error) {
 	}
 
 	// Make sure the PID still belongs to the same process.
+	// A permission error means it exists but we may not look at it.
 	current, err := proc.Read(target.PID)
+	if errors.Is(err, proc.ErrNoAccess) {
+		return nil, proc.ErrNoAccess
+	}
 	if err != nil || current.StartTime != target.StartTime {
 		return nil, ErrProcessGone
 	}
@@ -42,6 +46,9 @@ func (s *ThreadSampler) Sample(target proc.Process) ([]ThreadRow, error) {
 		return nil, err
 	}
 	tids, err := proc.ListThreadIDs(target.PID)
+	if errors.Is(err, proc.ErrNoAccess) {
+		return nil, proc.ErrNoAccess
+	}
 	if err != nil {
 		return nil, ErrProcessGone
 	}

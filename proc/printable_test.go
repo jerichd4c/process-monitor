@@ -1,6 +1,11 @@
 package proc
 
-import "testing"
+import (
+	"errors"
+	"io/fs"
+	"syscall"
+	"testing"
+)
 
 func TestPrintable(t *testing.T) {
 	cases := map[string]string{
@@ -36,5 +41,27 @@ func TestParseStatHostileName(t *testing.T) {
 	}
 	if p.Comm != "a?b?[1m" || p.PPID != 1 || p.UTime != 5 {
 		t.Errorf("Comm = %q, PPID = %d, UTime = %d", p.Comm, p.PPID, p.UTime)
+	}
+}
+
+func TestClassify(t *testing.T) {
+	denied := &fs.PathError{Op: "open", Path: "/proc/1/stat", Err: syscall.EACCES}
+	if got := classify(denied); !errors.Is(got, ErrNoAccess) {
+		t.Errorf("permission denied = %v, want ErrNoAccess", got)
+	}
+	gone := &fs.PathError{Op: "open", Path: "/proc/1/stat", Err: syscall.ENOENT}
+	if got := classify(gone); errors.Is(got, ErrNoAccess) || !errors.Is(got, fs.ErrNotExist) {
+		t.Errorf("missing file = %v, want it unchanged", got)
+	}
+	if classify(nil) != nil {
+		t.Error("classify(nil) is not nil")
+	}
+}
+
+func TestReadMissingProcess(t *testing.T) {
+	// A process that does not exist is "gone", never "no permission".
+	_, err := Read(4194000)
+	if err == nil || errors.Is(err, ErrNoAccess) {
+		t.Errorf("Read(missing) = %v, want a not-exist error", err)
 	}
 }

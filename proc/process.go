@@ -4,7 +4,9 @@
 package proc
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strconv"
@@ -60,7 +62,7 @@ func ListThreadIDs(pid int) ([]int, error) {
 func numericEntries(dir string) ([]int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, classify(err)
 	}
 	var ids []int
 	for _, e := range entries {
@@ -117,7 +119,7 @@ func (p Process) MemPercent(memTotalKB uint64) float64 {
 // readFile returns the content of /proc/[pid]/[name] as a string.
 func readFile(pid int, name string) (string, error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/%s", pid, name))
-	return string(data), err
+	return string(data), classify(err)
 }
 
 // parseStat parses the line of /proc/[pid]/stat.
@@ -215,4 +217,19 @@ func printable(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// ErrNoAccess means the kernel did not let us read the data of a process:
+// the process exists, but /proc hides its files from this user (as happens
+// when /proc is mounted with the hidepid option). It is a different case
+// from a process that has ended, and it gets a different message.
+var ErrNoAccess = errors.New("no permission to read its data in /proc")
+
+// classify turns a "permission denied" error into ErrNoAccess and returns
+// every other error unchanged.
+func classify(err error) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return ErrNoAccess
+	}
+	return err
 }

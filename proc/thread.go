@@ -24,7 +24,7 @@ type Thread struct {
 func ReadThread(pid, tid int) (Thread, error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/stat", pid, tid))
 	if err != nil {
-		return Thread{}, err
+		return Thread{}, classify(err)
 	}
 	p, err := parseStat(tid, string(data))
 	if err != nil {

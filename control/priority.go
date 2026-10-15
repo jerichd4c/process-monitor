@@ -32,6 +32,9 @@ func SetNice(target proc.Process, nice int) error {
 	}
 
 	tids, err := proc.ListThreadIDs(target.PID)
+	if errors.Is(err, proc.ErrNoAccess) {
+		return proc.ErrNoAccess
+	}
 	if err != nil {
 		return ErrGone
 	}
