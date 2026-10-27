@@ -53,7 +53,6 @@
         <li><a href="#design-rules">Design Rules</a></li>
       </ul>
     </li>
-    <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#known-limitations">Known Limitations</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
   </ol>
@@ -249,24 +248,6 @@ Only the main loop reads or modifies the interface state. The goroutine that wai
 * **Esc never quits.** It only goes back, so the program is not closed by pressing it once too many.
 * **Safe actions.** Suspend and resume are reversible and need no confirmation; terminate asks `y`, kill requires typing `yes`. The target is fixed when the key is pressed, not when the answer is given. The program refuses to act on itself, and checks the process start time right before sending a signal so it does not hit a different process that reused the PID.
 * Process names are stripped of control characters and invalid UTF-8 before being drawn.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ROADMAP -->
-## Roadmap
-
-The monitor already covers its core features; these are ideas to improve the interface. Any of them has to respect the [design rules](#design-rules): the data and control packages stay standard-library only, so these changes live in `ui`, or are plain calculations in `monitor`.
-
-- [ ] Reverse the sort direction and sort by more columns (user, threads, CPU time...). Today the table can only be ordered by CPU, memory or PID.
-- [ ] Show CPU and memory as color-coded bar meters in the summary, with an optional bar per CPU core, instead of plain numbers.
-- [ ] Add a detail view for the selected process with its full command line, which is cut at the screen edge in the table.
-- [ ] Collapse and expand branches in the process tree.
-- [ ] Add mouse support: select a row, click a column header to sort and scroll with the wheel.
-- [ ] Choose which columns are shown, and remember the sort order and refresh interval between runs.
-- [ ] Draw memory history in the graph view next to the CPU history.
-- [ ] Investigate supporting more terminal types (`TERM=linux`, `screen-256color`) without linking `os/exec` back into the binary.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
