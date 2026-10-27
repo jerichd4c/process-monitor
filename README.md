@@ -13,7 +13,7 @@
 <h3 align="center">Process Monitor</h3>
 
   <p align="center">
-    A full-screen terminal process monitor for Linux, in the spirit of top and htop, written in Go. Project for the Operating Systems course at URU.
+    A full-screen terminal process monitor for Linux, in the spirit of top and htop, written in Go.
   </p>
 </div>
 
